@@ -57,3 +57,20 @@ func TestIsPseudoServiceReturnsFalseForDiverseBanners(t *testing.T) {
 		t.Error("Should NOT be pseudo-service with diverse banners")
 	}
 }
+
+func TestIsPseudoServiceDetectsEmptyBanners(t *testing.T) {
+	detector := NewPseudoServiceDetector(20)
+
+	// 25 ports with empty banners (common honeypot behavior)
+	var ports []Port
+	for i := 1; i <= 25; i++ {
+		ports = append(ports, Port{
+			Port:   i,
+			Banner: "",  // Empty banner
+		})
+	}
+
+	if !detector.IsPseudoService("1.2.3.4", ports) {
+		t.Error("Should BE pseudo-service with 25 empty banners")
+	}
+}

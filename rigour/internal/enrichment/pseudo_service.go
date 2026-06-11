@@ -18,6 +18,7 @@ func NewPseudoServiceDetector(threshold int) *PseudoServiceDetector {
 }
 
 // IsPseudoService checks if a host is a fake responder.
+// The ip parameter is reserved for future logging/reporting capabilities.
 // Returns true if more than `threshold` ports respond with identical banners.
 func (d *PseudoServiceDetector) IsPseudoService(ip string, ports []Port) bool {
 	if len(ports) < d.threshold {
