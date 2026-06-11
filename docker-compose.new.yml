@@ -59,10 +59,48 @@ services:
       timeout: 3s
       retries: 3
 
+  enrichment-worker:
+    build:
+      context: ./rigour
+      dockerfile: Dockerfile.enrichment
+    container_name: rigour-enrichment
+    depends_on:
+      nats:
+        condition: service_healthy
+    command:
+      - "--nats-url=nats://nats:4222"
+      - "--geoip-city=/data/geoip/GeoLite2-City.mmdb"
+      - "--geoip-asn=/data/geoip/GeoLite2-ASN.mmdb"
+    volumes:
+      - geoipupdate_data:/data/geoip
+    deploy:
+      replicas: 3
+    networks:
+      - rigour-network
+    restart: unless-stopped
+
+  opensearch-indexer:
+    build:
+      context: ./rigour
+      dockerfile: Dockerfile.indexer
+    container_name: rigour-indexer
+    depends_on:
+      nats:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+    command:
+      - "--nats-url=nats://nats:4222"
+      - "--opensearch-urls=http://opensearch:9200"
+    networks:
+      - rigour-network
+    restart: unless-stopped
+
 volumes:
   nats-data:
   opensearch-data:
   redis-data:
+  geoipupdate_data:
 
 networks:
   rigour-network:
