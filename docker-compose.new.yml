@@ -96,6 +96,22 @@ services:
       - rigour-network
     restart: unless-stopped
 
+  scanner-agent:
+    build:
+      context: ./rigour
+      dockerfile: Dockerfile.scanner
+    container_name: rigour-scanner-agent
+    cap_add:
+      - NET_RAW
+    depends_on:
+      nats:
+        condition: service_healthy
+    command:
+      - "--nats-url=nats://nats:4222"
+    networks:
+      - rigour-network
+    restart: unless-stopped
+
 volumes:
   nats-data:
   opensearch-data:
