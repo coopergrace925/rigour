@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+# Default GeoIP database directory (override with GEOIP_DIR env var)
 GEOIP_DIR="${GEOIP_DIR:-/data/geoip}"
 MAXMIND_LICENSE_KEY="${MAXMIND_LICENSE_KEY}"
 

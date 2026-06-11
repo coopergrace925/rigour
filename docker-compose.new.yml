@@ -25,7 +25,9 @@ services:
     container_name: rigour-opensearch
     environment:
       - discovery.type=single-node
+      # Adjust -Xms/-Xmx based on available memory
       - OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g
+      # Dev only - enable security for production
       - DISABLE_SECURITY_PLUGIN=true
     ports:
       - "9200:9200"
