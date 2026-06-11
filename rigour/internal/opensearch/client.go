@@ -17,6 +17,7 @@ func NewClient(addresses []string) (*Client, error) {
 		Addresses: addresses,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
+				// Dev/test only - production should verify certificates
 				InsecureSkipVerify: true,
 			},
 		},

@@ -35,6 +35,7 @@ type CertInfo struct {
 	IssuerCN    string    `json:"issuer_cn"`
 	Fingerprint string    `json:"fingerprint"`
 	NotAfter    time.Time `json:"not_after"`
+	SAN         []string  `json:"san,omitempty"`
 }
 
 type HTTPInfo struct {

@@ -1,6 +1,8 @@
 package opensearch
 
 import (
+	"net"
+	"sort"
 	"time"
 
 	"github.com/ctrlsam/rigour/pkg/types"
@@ -40,6 +42,9 @@ func MergePorts(existing types.HostDocument, newScan types.EnrichedScan) types.H
 				Fingerprint: newScan.ZGrabData.TLS.Cert.Fingerprint,
 				NotAfter:    newScan.ZGrabData.TLS.Cert.NotAfter,
 			}
+			if len(newScan.ZGrabData.TLS.Cert.SAN) > 0 {
+				certData.SAN = newScan.ZGrabData.TLS.Cert.SAN
+			}
 		}
 		tlsData = &types.TLSData{
 			Version: newScan.ZGrabData.TLS.Version,
@@ -61,6 +66,7 @@ func MergePorts(existing types.HostDocument, newScan types.EnrichedScan) types.H
 		Port:     newScan.Port,
 		Protocol: newScan.Protocol,
 		Service:  newScan.Service,
+		Product:  "", // TODO: Extract product from banner or CPE
 		Banner:   newScan.Banner,
 		CPE:      newScan.CPE,
 		LastSeen: time.Now(),
@@ -82,9 +88,11 @@ func MergePorts(existing types.HostDocument, newScan types.EnrichedScan) types.H
 	existing.LastSeen = time.Now()
 	existing.IsStale = false
 	existing.IP = newScan.IP
+	existing.IPInt = ipToInt(newScan.IP)
 	existing.ASN = newScan.ASN
 	existing.Org = newScan.Org
 	existing.Country = newScan.Country
+	existing.City = newScan.City
 	existing.RDNS = newScan.RDNS
 
 	// Deduplicate CVEs across all ports
@@ -99,6 +107,23 @@ func MergePorts(existing types.HostDocument, newScan types.EnrichedScan) types.H
 	for cve := range cveSet {
 		existing.CVEs = append(existing.CVEs, cve)
 	}
+	sort.Strings(existing.CVEs) // Ensure deterministic ordering
 
 	return existing
+}
+
+// ipToInt converts an IPv4 address string to uint64 for range queries.
+// Returns 0 if the IP is invalid or not IPv4.
+func ipToInt(ip string) uint64 {
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return 0
+	}
+
+	ipv4 := parsedIP.To4()
+	if ipv4 == nil {
+		return 0 // Only IPv4 supported
+	}
+
+	return uint64(ipv4[0])<<24 | uint64(ipv4[1])<<16 | uint64(ipv4[2])<<8 | uint64(ipv4[3])
 }
