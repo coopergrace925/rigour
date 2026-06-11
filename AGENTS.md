@@ -4,160 +4,80 @@ High-signal guidance for working with the Rigour codebase.
 
 ## Project Structure
 
-Rigour is a microservices-based IoT scanning tool with 3 Go services and 1 Next.js UI:
+Rigour is migrating from an MVP stack (Kafka + MongoDB + Naabu/Fingerprintx) to a Censys-competitor architecture (NATS JetStream + OpenSearch + Redis + ZMap/ZGrab2).
 
-- **rigour/** (Go monorepo, Go 1.24.0)
-  - `cmd/crawler/` - Network scanner (Naabu + Fingerprintx)
-  - `cmd/persistence/` - Kafka consumer, enriches and stores to MongoDB
-  - `cmd/api/` - REST API server (Chi router)
-  - `pkg/` - Shared libraries
-  - `internal/` - Internal shared code
-  - `third_party/` - Vendored code (excluded from `go vet` in CI)
+### Go Services & Layout (`rigour/` Go monorepo, Go 1.25.0)
 
-- **rigour-ui/** (Next.js 16.1.1, React 19, TypeScript)
-  - Web interface for viewing scan results
+**New Pipeline Services (Phase 1):**
+- `cmd/zsend/` - CLI tool to stream ZMap (CSV) / ZGrab2 (NDJSON) output to NATS `scan.raw.<port>`
+- `cmd/enrichment-worker/` - Queue consumer (`enrichment-workers`) that enriches scans with GeoIP/ASN and publishes to `scan.enriched.<port>`
+- `cmd/opensearch-indexer/` - Queue consumer (`opensearch-indexer`) that indexes/upserts hosts into OpenSearch
 
-## Running the System
+**Shared Logic (`internal/`):**
+- `internal/blocklist/` - Thread-safe RFC1918, DoD, and IANA reserved IP blocklist and opt-out manager
+- `internal/enrichment/` - GeoIP lookup (MaxMind GeoLite2) and Pseudo-service / Honeypot detection
+- `internal/opensearch/` - OpenSearch client, Hosts index creator, and Censys-style 7-day port staleness pruner / merge utility
+- `internal/nats/` - NATS JetStream client and idempotent stream configuration (`RAW_SCANS`, `ENRICHED_SCANS`, `SCAN_EVENTS`)
 
-**Required setup:**
-1. Create `.env` from `.env.example` and set MaxMind credentials (required for GeoIP)
-2. Set `CRAWLER_CIDR` (defaults to `0.0.0.0/0` - the ENTIRE internet, adjust carefully!)
+**MVP Legacy Services:**
+- `cmd/crawler/` - Network scanner (Naabu + Fingerprintx)
+- `cmd/persistence/` - Kafka consumer, enriches and stores to MongoDB
+- `cmd/api/` - REST API server (Chi router querying MongoDB)
 
-**Start all services:**
+**Frontend:**
+- `rigour-ui/` - Next.js UI for viewing scan results
+
+---
+
+## Infrastructure Stack
+
+- **New Stack (NATS JetStream + OpenSearch + Redis)**: Managed via `docker-compose.new.yml`
+- **Legacy Stack (Kafka + ZooKeeper + MongoDB + GeoIPUpdate)**: Managed via `docker-compose.yml` and `docker-compose.override.yml`
+
+---
+
+## Development & Test Commands
+
+Run Go commands from the `rigour/` directory.
+
+### Build New Pipeline Services
 ```bash
-docker compose up -d
+go build ./cmd/zsend/
+go build ./cmd/enrichment-worker/
+go build ./cmd/opensearch-indexer/
 ```
 
-**Access:**
-- UI: http://localhost:3000
-- API: http://localhost:8080
-- Kafka: localhost:29092 (external), kafka:9092 (internal)
-- MongoDB: localhost:27017
-
-**Stop:**
+### Run Pipeline Unit Tests (Fast & Self-Contained)
+Unit tests for the new architecture do not require NATS, OpenSearch, or Docker to be running:
 ```bash
-docker compose down
+go test -v ./cmd/zsend ./internal/blocklist ./internal/enrichment ./internal/opensearch
 ```
 
-## Development Commands
-
-### Go services (run from `rigour/` directory)
-
-**Install libpcap-dev first (required dependency):**
+### Run Entire Test Suite (Requires Host libpcap-dev and Docker daemon)
+Legacy crawler tests use `dockertest` and will fail if Docker is not running.
 ```bash
+# Setup dependency
 sudo apt-get update && sudo apt-get install -y libpcap-dev
+# Run tests
+go test -v -race ./...
 ```
 
-**Test everything:**
-```bash
-go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
-```
+---
 
-**Lint (CI order matters):**
-```bash
-go mod verify
-go mod download
-go vet ./cmd/... ./internal/... ./pkg/...  # Excludes third_party/
-gofmt -l .  # Should return empty
-```
+## Crucial Architectural Constraints
 
-**Format:**
-```bash
-gofmt -w .
-```
+1. **NO MongoDB in New Stack**: OpenSearch is the single source of truth for host and port state.
+2. **Nested Mapping**: OpenSearch `ports` schema must be `"type": "nested"` to prevent cross-port query contamination.
+3. **OpenSearch Upsert**: Index documents using the host IP address as the document ID.
+4. **Idempotency**: NATS stream creation (`SetupStreams`) and OpenSearch index creation (`CreateHostsIndex`) check for existing resources first to prevent errors on restart.
+5. **Staleness Pruning**: `MergePorts` implements a 7-day TTL cutoff to prune ports not scanned recently.
+6. **Go 1.25.0**: Monorepo uses Go 1.25.0 due to NATS dependencies.
 
-### Next.js UI (run from `rigour-ui/` directory)
+---
 
-**Dev server:**
-```bash
-npm run dev  # or yarn/pnpm/bun dev
-```
+## Environment & Run Gotchas
 
-**Build:**
-```bash
-npm run build
-npm start
-```
-
-**Lint:**
-```bash
-npm run lint
-```
-
-## Architecture Notes
-
-**Message flow:** Crawler → Kafka (`scanned_services` topic) → Persistence → MongoDB → API → UI
-
-**Crawler:** Streams results to stdout (NDJSON) AND Kafka. Can run standalone without Kafka by omitting `--kafka-brokers`.
-
-**Persistence:** Enriches scan data with GeoIP (MaxMind) before storing. Requires `/data/geoip` volume mount.
-
-**API:** MongoDB query endpoint at `/api/hosts/search` with pagination. Filter param accepts MongoDB query JSON.
-
-**Services are independent:** Each service has its own `main.go` and Dockerfile. No shared runtime state beyond Kafka/MongoDB.
-
-## Testing Quirks
-
-- `third_party/` directory contains code with unsafe `testing.T/B` calls from goroutines - excluded from `go vet` in CI
-- Tests use `dockertest` for integration tests with real MongoDB/Kafka instances
-- Race detector enabled in CI (`-race` flag)
-- Coverage reports uploaded to Codecov but `fail_ci_if_error: false`
-
-## CI Workflow
-
-From `.github/workflows/ci.yml`:
-
-1. Go 1.25.5 (note: go.mod says 1.24.0, CI uses 1.25.5)
-2. Install libpcap-dev
-3. `go mod verify && go mod download`
-4. `go vet` (cmd, internal, pkg only)
-5. `gofmt -l` check (must be empty)
-6. `go test -v -race -coverprofile=coverage.out -covermode=atomic ./...`
-7. Build Docker images (if tests pass)
-
-Triggers on push/PR to `main` or `develop` branches, only when `rigour/**` files change.
-
-## Important Flags & Defaults
-
-**Crawler:**
-- `--top-ports 1000` - Scans top 1000 ports (can use `full` for all ports)
-- `--fast` - Only scan default ports per service
-- `--scan-type c` - Connect scan (default), use `s` for SYN scan
-- `--rate 50000` - Packets per second
-- UDP scanning (`-U`) may require root on Linux/macOS
-
-**Persistence:**
-- `--geoip-path` - Must point to GeoLite2 database directory
-
-**API:**
-- `--addr :8080` - Server listen address
-- `--mongo-collection hosts` - Default collection name
-
-## Common Gotchas
-
-- **CIDR default is 0.0.0.0/0** - Change this before running!
-- **MaxMind account required** - GeoIP won't work without credentials in `.env`
-- **Port discovery performance** - Linux performs better than macOS (especially Apple Silicon)
-- **UDP scanning** - Requires elevated privileges on most systems
-- **Third-party code** - Don't try to fix linting in `third_party/`, it's vendored
-- **Go version mismatch** - go.mod says 1.24.0, CI uses 1.25.5
-
-## API Reference
-
-**GET /api/hosts/search**
-- `filter` (optional): MongoDB query JSON
-- `limit` (optional): Max results (50-500, default 50)
-- `page_token` (optional): Pagination token from `next_page_token`
-
-**GET /api/facets**
-- `filter` (optional): MongoDB query JSON to restrict aggregation
-
-## Key Dependencies
-
-- **Naabu** (projectdiscovery) - Port discovery
-- **Fingerprintx** (praetorian) - Service fingerprinting
-- **Kafka** (Confluent) - Message bus
-- **MongoDB** - Data storage
-- **Chi** - HTTP router
-- **Cobra** - CLI framework
-- **MaxMind GeoIP** - Location enrichment
+- **MaxMind Databases**: The enrichment worker requires GeoLite2-City and GeoLite2-ASN databases to start up. If running locally without Docker volume `geoipupdate_data`, provide paths using `--geoip-city` and `--geoip-asn`.
+- **IP Validation**: `zsend` validates that incoming IPs are well-formed IPv4 addresses to prevent stream pollution.
+- **Port Extraction**: ZGrab2 inputs parsed by `zsend` must have their port extracted and populated, otherwise routing to `scan.raw.<port>` fails.
+- **Nil IP Checks**: Ensure blocklist and GeoIP lookups handle `nil` IP inputs gracefully to avoid panics.
