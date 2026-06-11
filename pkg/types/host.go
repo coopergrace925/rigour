@@ -19,21 +19,48 @@ type Host struct {
 
 // Port represents a single port entry (nested in OpenSearch)
 type Port struct {
-	Port      int       `json:"port"`
-	Protocol  string    `json:"protocol"`
-	Service   string    `json:"service"`
-	Product   string    `json:"product,omitempty"`
-	CPE       string    `json:"cpe,omitempty"`
-	Banner    string    `json:"banner,omitempty"`
-	LastSeen  time.Time `json:"last_seen"`
-	HTTP      *HTTPInfo `json:"http,omitempty"`
-	TLS       *TLSInfo  `json:"tls,omitempty"`
-	SSH       *SSHInfo  `json:"ssh,omitempty"`
+	Port     int       `json:"port"`
+	Protocol string    `json:"protocol"`
+	Service  string    `json:"service"`
+	Product  string    `json:"product,omitempty"`
+	CPE      string    `json:"cpe,omitempty"`
+	Banner   string    `json:"banner,omitempty"`
+	LastSeen time.Time `json:"last_seen"`
+	HTTP     *HTTPInfo `json:"http,omitempty"`
+	TLS      *TLSInfo  `json:"tls,omitempty"`
+	SSH      *SSHInfo  `json:"ssh,omitempty"`
 }
 
 // IPToInt converts IP string to int64
 func IPToInt(ip string) int64 {
-	// Simple implementation for IPv4
-	// TODO: Handle IPv6
-	return 0 // Placeholder
+	// Split IP into octets
+	parts := make([]int64, 4)
+	var octet int64
+	partIndex := 0
+
+	for i := 0; i < len(ip); i++ {
+		if ip[i] == '.' {
+			if partIndex >= 3 {
+				return 0 // Too many dots
+			}
+			parts[partIndex] = octet
+			partIndex++
+			octet = 0
+		} else if ip[i] >= '0' && ip[i] <= '9' {
+			octet = octet*10 + int64(ip[i]-'0')
+			if octet > 255 {
+				return 0 // Invalid octet
+			}
+		} else {
+			return 0 // Invalid character
+		}
+	}
+
+	if partIndex != 3 {
+		return 0 // Wrong number of parts
+	}
+	parts[3] = octet
+
+	// Combine octets into int64
+	return (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]
 }

@@ -32,6 +32,9 @@ func NewClient(url string) (*Client, error) {
 	}, nil
 }
 
+// JetStream returns the JetStream context for this client.
+// Note: This method does not validate connection state. Callers should check
+// connection health separately if needed using conn.IsConnected().
 func (c *Client) JetStream() nats.JetStreamContext {
 	return c.js
 }
