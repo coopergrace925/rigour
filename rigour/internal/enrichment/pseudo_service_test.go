@@ -5,12 +5,6 @@ import (
 	"testing"
 )
 
-// Port represents a simple port/banner pair for pseudo-service detection
-type Port struct {
-	Port   int
-	Banner string
-}
-
 func TestIsPseudoServiceReturnsFalseForFewPorts(t *testing.T) {
 	detector := NewPseudoServiceDetector(20)
 

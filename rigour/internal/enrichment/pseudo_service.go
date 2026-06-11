@@ -6,6 +6,12 @@ import (
 	"strings"
 )
 
+// Port represents a simple port/banner pair for pseudo-service detection
+type Port struct {
+	Port   int
+	Banner string
+}
+
 type PseudoServiceDetector struct {
 	threshold int // Number of identical banners to trigger detection
 }
