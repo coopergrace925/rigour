@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	internalnats "github.com/ctrlsam/rigour/internal/nats"
 	"github.com/ctrlsam/rigour/internal/enrichment"
+	internalnats "github.com/ctrlsam/rigour/internal/nats"
 	"github.com/ctrlsam/rigour/pkg/types"
 	"github.com/nats-io/nats.go"
 	"github.com/spf13/cobra"
@@ -21,6 +21,7 @@ type config struct {
 	natsURL      string
 	geoipCityDB  string
 	geoipASNDB   string
+	cveDBPath    string
 	workerID     string
 }
 
@@ -38,6 +39,7 @@ func init() {
 	rootCmd.Flags().StringVar(&cfg.natsURL, "nats-url", "nats://localhost:4222", "NATS URL")
 	rootCmd.Flags().StringVar(&cfg.geoipCityDB, "geoip-city", "/data/geoip/GeoLite2-City.mmdb", "GeoLite2-City path")
 	rootCmd.Flags().StringVar(&cfg.geoipASNDB, "geoip-asn", "/data/geoip/GeoLite2-ASN.mmdb", "GeoLite2-ASN path")
+	rootCmd.Flags().StringVar(&cfg.cveDBPath, "cve-db", "/data/cve/cve_index.bin", "CVE database index path")
 	rootCmd.Flags().StringVar(&cfg.workerID, "worker-id", "", "Worker ID")
 }
 
@@ -74,6 +76,14 @@ func run() error {
 	// Create pseudo-service detector
 	pseudoDetector := enrichment.NewPseudoServiceDetector(20)
 
+	// Initialize rDNS resolver, CPE matcher, CVE database
+	rdnsResolver := enrichment.NewRDNSResolver()
+	cpeMatcher := enrichment.NewCPEMatcher()
+	cveDB, err := enrichment.OpenCVEDatabase(cfg.cveDBPath)
+	if err != nil {
+		log.Printf("Warning: CVE DB not available at %s: %v", cfg.cveDBPath, err)
+	}
+
 	js := client.JetStream()
 
 	// Create durable consumer
@@ -81,7 +91,7 @@ func run() error {
 		"scan.raw.*",
 		"enrichment-workers",
 		func(msg *nats.Msg) {
-			processMessage(msg, js, geoip, pseudoDetector)
+			processMessage(msg, js, geoip, pseudoDetector, rdnsResolver, cpeMatcher, cveDB)
 		},
 		nats.Durable("enrichment-workers"),
 		nats.AckExplicit(),
@@ -113,7 +123,7 @@ func run() error {
 	return nil
 }
 
-func processMessage(msg *nats.Msg, js nats.JetStreamContext, geoip *enrichment.GeoIPLookup, pseudo *enrichment.PseudoServiceDetector) {
+func processMessage(msg *nats.Msg, js nats.JetStreamContext, geoip *enrichment.GeoIPLookup, pseudo *enrichment.PseudoServiceDetector, rdns *enrichment.LocalRDNSResolver, cpeMatcher *enrichment.CPEMatcher, cveDB *enrichment.CVEDatabase) {
 	var raw types.RawScan
 	if err := json.Unmarshal(msg.Data, &raw); err != nil {
 		log.Printf("Failed to unmarshal raw scan: %v", err)
@@ -128,12 +138,23 @@ func processMessage(msg *nats.Msg, js nats.JetStreamContext, geoip *enrichment.G
 		// Don't fail the message, process without geo info
 	}
 
+	// Enrich with rDNS, CPE, and CVEs
+	rdnsName, _ := rdns.Resolve(context.Background(), raw.IP)
+	cpe, _, _ := cpeMatcher.Match(raw.Service, raw.Banner)
+	var cves []string
+	if cveDB != nil {
+		cves = cveDB.GetCVEs(cpe)
+	}
+
 	enriched := types.EnrichedScan{
 		RawScan:    raw,
 		ASN:        geo.ASN,
 		Org:        geo.Org,
 		Country:    geo.Country,
 		City:       geo.City,
+		RDNS:       rdnsName,
+		CPE:        cpe,
+		CVEs:       cves,
 		EnrichedAt: time.Now(),
 	}
 
