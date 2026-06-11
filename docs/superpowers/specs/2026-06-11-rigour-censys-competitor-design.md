@@ -1124,3 +1124,45 @@ This design provides a complete, production-ready architecture for transforming 
 **Author:** Senior Principal Engineer (via OpenCode)  
 **Status:** Ready for Review
 
+
+---
+
+## APPENDIX A: Port Coverage Clarification
+
+**IMPORTANT:** Rigour scans **ALL 65,535 ports**, not just a subset.
+
+### Complete Port Coverage Strategy
+
+**Monthly Full Scan:**
+- Target: 4.3 billion IPv4 addresses
+- Ports: ALL 65,535 ports per IP
+- Total: 281 trillion port checks per month
+- Coverage: 80%+ of responsive services (Censys: 82%)
+
+**Adaptive Priority Overlay:**
+The adaptive scheduling ADDS extra scans for high-value ports on top of the monthly full scan:
+
+| Port Category | Base Scan | Extra Scans | Total Frequency |
+|--------------|-----------|-------------|-----------------|
+| Critical (22, 23, 3389) | Monthly (all ports) | Every 6h (these ports only) | ~120x/month |
+| Web (80, 443) | Monthly (all ports) | Daily (these ports only) | ~30x/month |
+| Top 1000 | Monthly (all ports) | Weekly (these ports only) | ~4x/month |
+| All 65,535 | Monthly (all ports) | - | 1x/month |
+
+**Result:** 
+- Critical ports scanned 120 times per month (near real-time monitoring)
+- Every port scanned at least once per month (complete coverage)
+- Matches Censys coverage while providing faster detection on critical services
+
+### Why Not Scan All Ports Daily?
+
+**Math:**
+- 4.3B IPs × 65,535 ports = 281 trillion checks
+- At 10M pps per ZMap node = 32 days of scanning at full speed
+- Would require 100+ ZMap nodes running 24/7
+
+**Solution:**
+- Monthly full scan provides complete coverage
+- Priority scanning provides fast detection where it matters
+- Cost-effective while maintaining Censys-level comprehensiveness
+
