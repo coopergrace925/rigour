@@ -1,0 +1,46 @@
+package opensearch
+
+import (
+	"crypto/tls"
+	"fmt"
+	"net/http"
+
+	opensearchgo "github.com/opensearch-project/opensearch-go/v2"
+)
+
+type Client struct {
+	os *opensearchgo.Client
+}
+
+func NewClient(addresses []string) (*Client, error) {
+	cfg := opensearchgo.Config{
+		Addresses: addresses,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+
+	client, err := opensearchgo.NewClient(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create OpenSearch client: %w", err)
+	}
+
+	// Verify connection
+	res, err := client.Info()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to OpenSearch: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.IsError() {
+		return nil, fmt.Errorf("OpenSearch returned error: %s", res.Status())
+	}
+
+	return &Client{os: client}, nil
+}
+
+func (c *Client) Raw() *opensearchgo.Client {
+	return c.os
+}
