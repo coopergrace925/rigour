@@ -16,11 +16,20 @@ type GeoResult struct {
 	Lon     float64 `json:"lon,omitempty"`
 }
 
+// GeoIPLookup provides thread-safe GeoIP and ASN lookups using MaxMind databases.
+// Multiple goroutines may call Lookup() concurrently.
 type GeoIPLookup struct {
 	cityDB *geoip2.Reader
 	asnDB  *geoip2.Reader
 }
 
+// NewGeoIPLookup opens the GeoLite2-City and GeoLite2-ASN databases.
+// Caller must call Close() when done to release database handles.
+// Example:
+//
+//	lookup, err := NewGeoIPLookup(cityPath, asnPath)
+//	if err != nil { return err }
+//	defer lookup.Close()
 func NewGeoIPLookup(cityDBPath, asnDBPath string) (*GeoIPLookup, error) {
 	cityDB, err := geoip2.Open(cityDBPath)
 	if err != nil {
@@ -39,10 +48,13 @@ func NewGeoIPLookup(cityDBPath, asnDBPath string) (*GeoIPLookup, error) {
 	}, nil
 }
 
-func (g *GeoIPLookup) Lookup(ipStr string) GeoResult {
+// Lookup performs GeoIP and ASN lookups for the given IP address.
+// Returns error if the IP address is invalid. Database lookup errors are
+// not returned; the function returns partial results if available.
+func (g *GeoIPLookup) Lookup(ipStr string) (GeoResult, error) {
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
-		return GeoResult{}
+		return GeoResult{}, fmt.Errorf("invalid IP address: %s", ipStr)
 	}
 
 	result := GeoResult{}
@@ -57,6 +69,7 @@ func (g *GeoIPLookup) Lookup(ipStr string) GeoResult {
 		result.Lat = city.Location.Latitude
 		result.Lon = city.Location.Longitude
 	}
+	// Note: Not returning error here - we allow partial results
 
 	// ASN lookup
 	asn, err := g.asnDB.ASN(ip)
@@ -65,9 +78,10 @@ func (g *GeoIPLookup) Lookup(ipStr string) GeoResult {
 		result.Org = asn.AutonomousSystemOrganization
 	}
 
-	return result
+	return result, nil
 }
 
+// Close releases database handles. Must be called when done using GeoIPLookup.
 func (g *GeoIPLookup) Close() {
 	if g.cityDB != nil {
 		g.cityDB.Close()
