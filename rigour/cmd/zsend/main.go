@@ -39,16 +39,23 @@ func init() {
 }
 
 func main() {
-	if cfg.scannerID == "" {
-		hostname, _ := os.Hostname()
-		cfg.scannerID = hostname
-	}
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
 
 func run() error {
+	// Set scanner-id default if empty
+	if cfg.scannerID == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to get hostname: %v\n", err)
+			cfg.scannerID = "unknown"
+		} else {
+			cfg.scannerID = hostname
+		}
+	}
+
 	client, err := internalnats.NewClient(cfg.natsURL)
 	if err != nil {
 		return fmt.Errorf("failed to connect to NATS: %w", err)
@@ -91,6 +98,7 @@ func run() error {
 		data, err := json.Marshal(scan)
 		if err != nil {
 			errors++
+			fmt.Fprintf(os.Stderr, "marshal error: %v\n", err)
 			continue
 		}
 
@@ -118,13 +126,18 @@ func parseZMapCSVLine(line string) (*types.RawScan, error) {
 		return nil, fmt.Errorf("invalid CSV line: expected 4+ fields, got %d", len(parts))
 	}
 
+	ip := strings.TrimSpace(parts[0])
+	if !isValidIPv4(ip) {
+		return nil, fmt.Errorf("invalid IP address: %s", ip)
+	}
+
 	port, err := strconv.Atoi(strings.TrimSpace(parts[1]))
 	if err != nil {
 		return nil, fmt.Errorf("invalid port: %w", err)
 	}
 
 	return &types.RawScan{
-		IP:       strings.TrimSpace(parts[0]),
+		IP:       ip,
 		Port:     port,
 		Protocol: "tcp",
 	}, nil
@@ -142,8 +155,13 @@ func parseZGrab2JSONLine(data []byte) (*types.RawScan, error) {
 		return nil, fmt.Errorf("invalid JSON: %w", err)
 	}
 
+	if !isValidIPv4(raw.IP) {
+		return nil, fmt.Errorf("invalid IP address: %s", raw.IP)
+	}
+
 	scan := &types.RawScan{
-		IP: raw.IP,
+		IP:   raw.IP,
+		Port: raw.Port,
 	}
 
 	// Extract protocol data from ZGrab2 output
@@ -158,6 +176,20 @@ func parseZGrab2JSONLine(data []byte) (*types.RawScan, error) {
 	}
 
 	return scan, nil
+}
+
+func isValidIPv4(ip string) bool {
+	parts := strings.Split(ip, ".")
+	if len(parts) != 4 {
+		return false
+	}
+	for _, part := range parts {
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 0 || n > 255 {
+			return false
+		}
+	}
+	return true
 }
 
 func buildRawScan(ip string, port int, protocol string, scannerID string) *types.RawScan {
