@@ -7,7 +7,8 @@ import (
 	"sync"
 )
 
-// DefaultCIDRs contains mandatory blocklist entries
+// DefaultCIDRs contains mandatory blocklist entries (IPv4 only)
+// TODO: Add IPv6 ranges (::1, fe80::/10, fc00::/7, etc.)
 var DefaultCIDRs = []string{
 	// RFC 1918 - Private networks
 	"10.0.0.0/8",
@@ -63,7 +64,8 @@ func NewBlocklist() *Blocklist {
 	for _, cidr := range DefaultCIDRs {
 		_, ipnet, err := net.ParseCIDR(cidr)
 		if err != nil {
-			continue
+			// Should never happen with hardcoded defaults
+			panic(fmt.Sprintf("invalid default CIDR %s: %v", cidr, err))
 		}
 		bl.nets = append(bl.nets, ipnet)
 	}
@@ -72,6 +74,10 @@ func NewBlocklist() *Blocklist {
 }
 
 func (b *Blocklist) IsBlocked(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -91,6 +97,10 @@ func (b *Blocklist) IsBlocked(ip net.IP) bool {
 }
 
 func (b *Blocklist) AddOptOut(ip net.IP) {
+	if ip == nil {
+		return
+	}
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.optOuts[ip.String()] = struct{}{}

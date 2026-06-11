@@ -78,3 +78,15 @@ func TestGenerateFile(t *testing.T) {
 		t.Error("Blocklist file is empty")
 	}
 }
+
+func TestBlocklistHandlesNilIP(t *testing.T) {
+	bl := NewBlocklist()
+
+	// Should not panic
+	if bl.IsBlocked(nil) {
+		t.Error("Expected nil IP to not be blocked")
+	}
+
+	// Should not panic
+	bl.AddOptOut(nil)
+}
