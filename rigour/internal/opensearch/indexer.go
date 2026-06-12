@@ -2,7 +2,6 @@ package opensearch
 
 import (
 	"net"
-	"sort"
 	"time"
 
 	"github.com/ctrlsam/rigour/pkg/types"
@@ -96,18 +95,20 @@ func MergePorts(existing types.HostDocument, newScan types.EnrichedScan) types.H
 	existing.RDNS = newScan.RDNS
 
 	// Deduplicate CVEs across all ports
-	cveSet := make(map[string]struct{})
+	cveSet := make(map[string]types.CVEInfo)
 	for _, cve := range existing.CVEs {
-		cveSet[cve] = struct{}{}
+		cveSet[cve.ID] = cve
 	}
 	for _, cve := range newScan.CVEs {
-		cveSet[cve] = struct{}{}
+		// Keep existing CVE if already present, otherwise add new one
+		if _, exists := cveSet[cve.ID]; !exists {
+			cveSet[cve.ID] = cve
+		}
 	}
 	existing.CVEs = nil
-	for cve := range cveSet {
+	for _, cve := range cveSet {
 		existing.CVEs = append(existing.CVEs, cve)
 	}
-	sort.Strings(existing.CVEs) // Ensure deterministic ordering
 
 	return existing
 }

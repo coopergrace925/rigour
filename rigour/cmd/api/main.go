@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ctrlsam/rigour/internal/api"
+	"github.com/ctrlsam/rigour/internal/blocklist"
 	"github.com/ctrlsam/rigour/internal/opensearch"
 	internalredis "github.com/ctrlsam/rigour/internal/redis"
 	storageopensearch "github.com/ctrlsam/rigour/internal/storage/opensearch"
@@ -63,6 +64,9 @@ func runServer(ctx context.Context) error {
 	// Create OpenSearch repository
 	repository := storageopensearch.NewHostRepository(osClient)
 
+	// Create blocklist for opt-out support
+	bl := blocklist.NewBlocklist()
+
 	// Create rate limiter
 	rateLimiter := api.NewRateLimiter(redisClient)
 
@@ -70,8 +74,8 @@ func runServer(ctx context.Context) error {
 	var analyticsHandler *api.AnalyticsHandler
 	// analyticsHandler = api.NewAnalyticsHandler(clickhouseClient)
 
-	// Create router and handler with middleware
-	router := api.NewRouterWithAnalytics(repository, redisClient, analyticsHandler)
+	// Create router and handler with middleware (pass blocklist for opt-out support)
+	router := api.NewRouterWithAnalytics(repository, redisClient, analyticsHandler, bl)
 	
 	// Apply middleware to the handler
 	var handler http.Handler = router.Handler()

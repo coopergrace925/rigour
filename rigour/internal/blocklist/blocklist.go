@@ -51,9 +51,10 @@ var DefaultCIDRs = []string{
 }
 
 type Blocklist struct {
-	mu      sync.RWMutex
-	nets    []*net.IPNet
-	optOuts map[string]struct{}
+	mu         sync.RWMutex
+	nets       []*net.IPNet      // Default blocklist CIDRs
+	optOuts    map[string]struct{} // Individual IP opt-outs (for backward compat)
+	optOutNets []*net.IPNet       // CIDR opt-outs
 }
 
 func NewBlocklist() *Blocklist {
@@ -81,9 +82,16 @@ func (b *Blocklist) IsBlocked(ip net.IP) bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	// Check opt-outs
+	// Check opt-out IPs
 	if _, ok := b.optOuts[ip.String()]; ok {
 		return true
+	}
+
+	// Check opt-out CIDRs
+	for _, ipnet := range b.optOutNets {
+		if ipnet.Contains(ip) {
+			return true
+		}
 	}
 
 	// Check CIDR blocks
@@ -104,6 +112,35 @@ func (b *Blocklist) AddOptOut(ip net.IP) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.optOuts[ip.String()] = struct{}{}
+}
+
+// AddOptOutCIDR adds a CIDR block to the opt-out list
+func (b *Blocklist) AddOptOutCIDR(cidr string) error {
+	_, ipnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return fmt.Errorf("invalid CIDR: %w", err)
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.optOutNets = append(b.optOutNets, ipnet)
+	return nil
+}
+
+// GetOptOuts returns all opt-out IPs and CIDRs
+func (b *Blocklist) GetOptOuts() (ips []string, cidrs []string) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	for ip := range b.optOuts {
+		ips = append(ips, ip)
+	}
+
+	for _, ipnet := range b.optOutNets {
+		cidrs = append(cidrs, ipnet.String())
+	}
+
+	return ips, cidrs
 }
 
 func (b *Blocklist) GenerateFile(path string) error {
@@ -128,6 +165,12 @@ func (b *Blocklist) GenerateFile(path string) error {
 	fmt.Fprintln(f, "# Opt-out IPs")
 	for ip := range b.optOuts {
 		fmt.Fprintf(f, "%s/32\n", ip)
+	}
+
+	fmt.Fprintln(f)
+	fmt.Fprintln(f, "# Opt-out CIDRs")
+	for _, ipnet := range b.optOutNets {
+		fmt.Fprintln(f, ipnet.String())
 	}
 
 	return nil

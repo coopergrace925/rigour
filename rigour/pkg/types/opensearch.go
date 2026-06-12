@@ -56,7 +56,7 @@ type HostDocument struct {
 	RDNS     string    `json:"rdns,omitempty"`
 	LastSeen time.Time `json:"last_seen"`
 	IsStale  bool      `json:"is_stale"`
-	CVEs     []string  `json:"cves,omitempty"`
+	CVEs     []CVEInfo `json:"cves,omitempty"` // Changed from []string to support verified flag
 	Tags     []string  `json:"tags,omitempty"`
 	Ports    []Port    `json:"ports,omitempty"`
 }
