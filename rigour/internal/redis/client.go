@@ -93,3 +93,34 @@ func (c *Client) SIsMember(ctx context.Context, key string, member string) (bool
 	}
 	return exists, nil
 }
+
+func (c *Client) Get(ctx context.Context, key string) (string, error) {
+	if c.rdb == nil {
+		return "", fmt.Errorf("redis client not initialized")
+	}
+	val, err := c.rdb.Get(ctx, key).Result()
+	if err != nil {
+		return "", err
+	}
+	return val, nil
+}
+
+func (c *Client) Set(ctx context.Context, key string, value string, ttl time.Duration) error {
+	if c.rdb == nil {
+		return fmt.Errorf("redis client not initialized")
+	}
+	if err := c.rdb.Set(ctx, key, value, ttl).Err(); err != nil {
+		return fmt.Errorf("failed to set key: %w", err)
+	}
+	return nil
+}
+
+func (c *Client) Del(ctx context.Context, key string) error {
+	if c.rdb == nil {
+		return fmt.Errorf("redis client not initialized")
+	}
+	if err := c.rdb.Del(ctx, key).Err(); err != nil {
+		return fmt.Errorf("failed to delete key: %w", err)
+	}
+	return nil
+}
