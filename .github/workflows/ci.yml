@@ -5,11 +5,12 @@ on:
     branches: [ main, develop ]
     paths:
       - 'rigour/**'
-      - '.github/workflows/go-tests.yml'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches: [ main, develop ]
     paths:
       - 'rigour/**'
+  workflow_dispatch:  # Allow manual trigger
 
 jobs:
   test:
