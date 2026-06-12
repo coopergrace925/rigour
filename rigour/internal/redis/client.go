@@ -61,3 +61,35 @@ func (c *Client) IncrementASNRate(ctx context.Context, asn int, ttl time.Duratio
 	}
 	return incr.Val(), nil
 }
+
+func (c *Client) Incr(ctx context.Context, key string) (int64, error) {
+	if c.rdb == nil {
+		return 0, fmt.Errorf("redis client not initialized")
+	}
+	val, err := c.rdb.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, fmt.Errorf("failed to increment key: %w", err)
+	}
+	return val, nil
+}
+
+func (c *Client) Expire(ctx context.Context, key string, ttl time.Duration) error {
+	if c.rdb == nil {
+		return fmt.Errorf("redis client not initialized")
+	}
+	if err := c.rdb.Expire(ctx, key, ttl).Err(); err != nil {
+		return fmt.Errorf("failed to set expiry: %w", err)
+	}
+	return nil
+}
+
+func (c *Client) SIsMember(ctx context.Context, key string, member string) (bool, error) {
+	if c.rdb == nil {
+		return false, fmt.Errorf("redis client not initialized")
+	}
+	exists, err := c.rdb.SIsMember(ctx, key, member).Result()
+	if err != nil {
+		return false, fmt.Errorf("failed to check set membership: %w", err)
+	}
+	return exists, nil
+}
