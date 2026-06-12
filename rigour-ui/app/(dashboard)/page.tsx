@@ -18,52 +18,62 @@ export default async function Home({ searchParams: searchParamsPromise }: PagePr
 
   try {
     const filter: Record<string, unknown> = {};
+    let queryString = '';
 
-    const selectedCountries = searchParams.countries
-      ? Array.isArray(searchParams.countries)
-        ? searchParams.countries
-        : searchParams.countries.split(',')
-      : [];
-    const selectedASNs = searchParams.asns
-      ? Array.isArray(searchParams.asns)
-        ? searchParams.asns
-        : searchParams.asns.split(',')
-      : [];
-    const selectedServices = searchParams.services
-      ? Array.isArray(searchParams.services)
-        ? searchParams.services
-        : searchParams.services.split(',')
-      : [];
+    // Check if we have a Shodan-style query
+    const qParam = searchParams.q;
+    if (qParam && typeof qParam === 'string') {
+      queryString = qParam;
+    } else {
+      // Build legacy filter from facet selections for backward compatibility
+      const selectedCountries = searchParams.countries
+        ? Array.isArray(searchParams.countries)
+          ? searchParams.countries
+          : searchParams.countries.split(',')
+        : [];
+      const selectedASNs = searchParams.asns
+        ? Array.isArray(searchParams.asns)
+          ? searchParams.asns
+          : searchParams.asns.split(',')
+        : [];
+      const selectedServices = searchParams.services
+        ? Array.isArray(searchParams.services)
+          ? searchParams.services
+          : searchParams.services.split(',')
+        : [];
 
-    if (selectedCountries.length > 0) {
-      filter['location.country_code'] = { $in: selectedCountries };
-    }
+      if (selectedCountries.length > 0) {
+        filter['location.country_code'] = { $in: selectedCountries };
+      }
 
-    if (selectedASNs.length > 0) {
-      const asnNumbers = selectedASNs.map(asn => parseInt(asn.replace('AS', '')));
-      filter['asn.number'] = { $in: asnNumbers };
-    }
+      if (selectedASNs.length > 0) {
+        const asnNumbers = selectedASNs.map(asn => parseInt(asn.replace('AS', '')));
+        filter['asn.number'] = { $in: asnNumbers };
+      }
 
-    if (selectedServices.length > 0) {
-      filter['services.protocol'] = { $in: selectedServices };
-    }
+      if (selectedServices.length > 0) {
+        filter['services.protocol'] = { $in: selectedServices };
+      }
 
-    if (searchParams.filter) {
-      const filterParams = Array.isArray(searchParams.filter)
-        ? searchParams.filter
-        : [searchParams.filter];
+      if (searchParams.filter) {
+        const filterParams = Array.isArray(searchParams.filter)
+          ? searchParams.filter
+          : [searchParams.filter];
 
-      for (const filterParam of filterParams) {
-        try {
-          const parsedFilter = JSON.parse(filterParam);
-          Object.assign(filter, parsedFilter);
-        } catch (e) {
-          console.error('Failed to parse filter parameter:', e);
+        for (const filterParam of filterParams) {
+          try {
+            const parsedFilter = JSON.parse(filterParam);
+            Object.assign(filter, parsedFilter);
+          } catch (e) {
+            console.error('Failed to parse filter parameter:', e);
+          }
         }
       }
     }
 
-    const searchResult = await searchHosts(filter, 50);
+    const searchResult = queryString 
+      ? await searchHosts(queryString, undefined, 50)
+      : await searchHosts(undefined, filter, 50);
     hosts = searchResult.hosts || [];
 
     const facetsResult = await getFacets(filter);
@@ -116,7 +126,8 @@ export default async function Home({ searchParams: searchParamsPromise }: PagePr
       <div className="container mx-auto px-4 py-8 max-w-7xl space-y-8">
         <SearchHeader
           initialQuery={
-            typeof searchParams.query === 'string' ? searchParams.query : ''
+            typeof searchParams.q === 'string' ? searchParams.q : 
+            (typeof searchParams.query === 'string' ? searchParams.query : '')
           }
         />
 

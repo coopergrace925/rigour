@@ -31,14 +31,8 @@ export function SearchHeader({ initialQuery = '' }: SearchHeaderProps) {
     const params = new URLSearchParams();
 
     if (query) {
-      const parsedParams = parseQuery(query);
-
-      if (parsedParams) {
-        // Use parsed filter as query parameter
-        for (const [key, value] of Object.entries(parsedParams)) {
-          params.append('filter', JSON.stringify({ [key]: value }));
-        }
-      }
+      // Pass the raw query as 'q' parameter (Shodan-style)
+      params.append('q', query);
     }
 
     router.push(`?${params.toString()}`);
@@ -84,7 +78,7 @@ export function SearchHeader({ initialQuery = '' }: SearchHeaderProps) {
 
       <div className="space-y-2">
         <p className="text-xs text-muted-foreground">
-          Enter search filters using field syntax (e.g., <code className="bg-secondary px-1 py-0.5 border border-border rounded text-foreground font-mono">services.protocol: ssh</code> or <code className="bg-secondary px-1 py-0.5 border border-border rounded text-foreground font-mono">location.country_code: US</code>)
+          Enter Shodan-style queries (e.g., <code className="bg-secondary px-1 py-0.5 border border-border rounded text-foreground font-mono">port:22 country:US</code> or <code className="bg-secondary px-1 py-0.5 border border-border rounded text-foreground font-mono">cve:CVE-2023-44487 org:Google</code>)
         </p>
       </div>
 
@@ -93,7 +87,7 @@ export function SearchHeader({ initialQuery = '' }: SearchHeaderProps) {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
           <Input
             type="text"
-            placeholder="e.g. services.protocol: ssh"
+            placeholder="e.g. port:22 country:US apache"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyPress={handleKeyPress}

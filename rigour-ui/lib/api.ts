@@ -34,13 +34,18 @@ export interface FacetsResponse {
  * Search for hosts with optional filters and pagination
  */
 export async function searchHosts(
+  query?: string,
   filter?: Record<string, any>,
   limit: number = 20,
   pageToken?: string
 ): Promise<SearchResponse> {
   const params = new URLSearchParams();
 
-  if (filter && Object.keys(filter).length > 0) {
+  // Prefer Shodan-style query (q parameter)
+  if (query) {
+    params.append('q', query);
+  } else if (filter && Object.keys(filter).length > 0) {
+    // Fall back to legacy filter parameter for backward compatibility
     params.append('filter', JSON.stringify(filter));
   }
 
