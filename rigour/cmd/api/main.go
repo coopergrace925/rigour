@@ -67,7 +67,7 @@ func runServer(ctx context.Context) error {
 	rateLimiter := api.NewRateLimiter(redisClient)
 
 	// Create router and handler with middleware
-	router := api.NewRouter(repository)
+	router := api.NewRouter(repository, redisClient)
 	
 	// Apply middleware to the handler
 	var handler http.Handler = router.Handler()
