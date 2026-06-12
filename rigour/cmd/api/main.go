@@ -5,19 +5,21 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/ctrlsam/rigour/internal/api"
-	"github.com/ctrlsam/rigour/internal/storage"
-	"github.com/ctrlsam/rigour/internal/storage/mongodb"
+	"github.com/ctrlsam/rigour/internal/opensearch"
+	internalredis "github.com/ctrlsam/rigour/internal/redis"
+	storageopensearch "github.com/ctrlsam/rigour/internal/storage/opensearch"
 	"github.com/spf13/cobra"
 )
 
 type cliConfig struct {
-	mongoURI   string
-	database   string
-	collection string
-	addr       string
+	opensearchURL string
+	redisAddr     string
+	addr          string
 }
 
 var config cliConfig
@@ -25,16 +27,15 @@ var config cliConfig
 var rootCmd = &cobra.Command{
 	Use:   "rigour-api",
 	Short: "REST API server for Rigour",
-	Long:  "A REST API server for querying scanned hosts and services from MongoDB",
+	Long:  "A REST API server for querying scanned hosts and services from OpenSearch",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runServer(cmd.Context())
 	},
 }
 
 func init() {
-	rootCmd.Flags().StringVar(&config.mongoURI, "mongo-uri", "mongodb://localhost:27017", "MongoDB connection URI")
-	rootCmd.Flags().StringVar(&config.database, "mongo-db", "rigour", "MongoDB database name")
-	rootCmd.Flags().StringVar(&config.collection, "mongo-collection", "hosts", "MongoDB collection name")
+	rootCmd.Flags().StringVar(&config.opensearchURL, "opensearch-url", "https://localhost:9200", "OpenSearch URL")
+	rootCmd.Flags().StringVar(&config.redisAddr, "redis-addr", "localhost:6379", "Redis address")
 	rootCmd.Flags().StringVar(&config.addr, "addr", ":8080", "Server address (host:port)")
 }
 
@@ -46,52 +47,57 @@ func main() {
 }
 
 func runServer(ctx context.Context) error {
-	// Validate inputs
-	if config.mongoURI == "" {
-		return fmt.Errorf("mongo-uri is required")
-	}
-
-	// Create MongoDB client
-	connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	mongoClient, err := mongodb.NewClient(connectCtx, config.mongoURI, 10*time.Second)
+	// Create OpenSearch client
+	osClient, err := opensearch.NewClient([]string{config.opensearchURL})
 	if err != nil {
-		return fmt.Errorf("failed to connect to MongoDB: %w", err)
+		return fmt.Errorf("failed to connect to OpenSearch: %w", err)
 	}
-	defer mongoClient.Close(context.Background())
 
-	// Create repository
-	repository, err := mongoClient.NewHostsRepository(connectCtx, storage.RepositoryConfig{
-		Database:   config.database,
-		Collection: config.collection,
-		Timeout:    10,
-	})
+	// Create Redis client
+	redisClient, err := internalredis.NewClient(config.redisAddr)
 	if err != nil {
-		return fmt.Errorf("failed to create repository: %w", err)
+		return fmt.Errorf("failed to connect to Redis: %w", err)
 	}
+	defer redisClient.Close()
 
-	// Create router and handler
+	// Create OpenSearch repository
+	repository := storageopensearch.NewHostRepository(osClient)
+
+	// Create rate limiter
+	rateLimiter := api.NewRateLimiter(redisClient)
+
+	// Create router and handler with middleware
 	router := api.NewRouter(repository)
+	
+	// Apply middleware to the handler
+	var handler http.Handler = router.Handler()
+	handler = rateLimiter.RateLimitMiddleware(60)(handler) // 60 requests per minute
+	handler = rateLimiter.APIKeyAuthMiddleware(handler)
 
 	// Setup HTTP server
 	server := &http.Server{
 		Addr:         config.addr,
-		Handler:      router.Handler(),
+		Handler:      handler,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
+	// Setup graceful shutdown
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	// Start server in a goroutine
 	go func() {
-		fmt.Printf("Starting API server on %s\n", config.addr)
+		fmt.Printf("Starting Rigour API server on %s\n", config.addr)
+		fmt.Printf("OpenSearch: %s\n", config.opensearchURL)
+		fmt.Printf("Redis: %s\n", config.redisAddr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			fmt.Fprintf(os.Stderr, "error: server failed: %v\n", err)
 		}
 	}()
 
-	// Wait for context cancellation
+	// Wait for interrupt signal
 	<-ctx.Done()
 
 	// Graceful shutdown

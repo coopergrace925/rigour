@@ -24,10 +24,54 @@ func NewHandler(repository storage.HostRepository) *Handler {
 
 // SearchHandler handles GET /api/hosts/search requests with query parameters.
 func (handler *Handler) SearchHandler(w http.ResponseWriter, r *http.Request) {
-	// Parse filter from query parameter if provided
+	// Parse Shodan-style query from 'q' parameter
 	filter := make(map[string]interface{})
+	
+	queryParam := r.URL.Query().Get("q")
+	if queryParam != "" {
+		// Parse Shodan dork query
+		filters := ParseShodanQuery(queryParam)
+		
+		// Convert QueryFilters to filter map
+		if filters.Port > 0 {
+			filter["services.protocol"] = filters.Port
+		}
+		if filters.ASN > 0 {
+			filter["asn"] = filters.ASN
+		}
+		if filters.Country != "" {
+			filter["country"] = filters.Country
+		}
+		if filters.City != "" {
+			filter["city"] = filters.City
+		}
+		if filters.Org != "" {
+			filter["org"] = filters.Org
+		}
+		if filters.CVE != "" {
+			filter["cves"] = filters.CVE
+		}
+		if filters.CPE != "" {
+			filter["services.cpe"] = filters.CPE
+		}
+		if filters.Product != "" {
+			filter["services.product"] = filters.Product
+		}
+		if filters.Banner != "" {
+			filter["services.banner"] = filters.Banner
+		}
+		if filters.Title != "" {
+			filter["services.http.title"] = filters.Title
+		}
+		if filters.Server != "" {
+			filter["services.http.server"] = filters.Server
+		}
+		// TODO: Handle FreeText with multi_match query
+	}
+	
+	// Fall back to legacy 'filter' parameter for backward compatibility
 	filterParam := r.URL.Query().Get("filter")
-	if filterParam != "" {
+	if filterParam != "" && queryParam == "" {
 		if err := json.Unmarshal([]byte(filterParam), &filter); err != nil {
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, map[string]string{"error": "Invalid filter parameter"})
