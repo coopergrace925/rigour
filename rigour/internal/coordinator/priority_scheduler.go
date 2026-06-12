@@ -6,82 +6,65 @@ import (
 	"time"
 )
 
-// PortPriority defines scan frequency tiers
-type PortPriority int
-
-const (
-	PriorityCritical PortPriority = iota // Every 6 hours (SSH, Telnet, RDP)
-	PriorityHigh                         // Every 24 hours (HTTP, HTTPS)
-	PriorityICS                          // Every 24 hours (ICS/SCADA)
-	PriorityTop1000                      // Every 7 days (Top 1000 ports)
-	PriorityFull                         // Every 30 days (All 65535 ports)
-)
-
+// PortSchedule tracks when a port should be scanned next
 type PortSchedule struct {
 	Port         int
-	Priority     PortPriority
+	Tier         PortTier
 	LastScanned  time.Time
 	NextScan     time.Time
 	ScanInterval time.Duration
 }
 
+// Scheduler manages production-grade port scanning schedules
+// Aligned with Shodan's 3,846 port list industry standard
 type Scheduler struct {
+	registry  *PortRegistry
 	schedules map[int]*PortSchedule
 }
 
+// NewScheduler initializes a production scheduler with Shodan's port list
 func NewScheduler() *Scheduler {
+	registry, err := NewPortRegistry()
+	if err != nil {
+		log.Fatalf("Failed to initialize port registry: %v", err)
+	}
+
 	s := &Scheduler{
+		registry:  registry,
 		schedules: make(map[int]*PortSchedule),
 	}
 	s.initializeSchedules()
 	return s
 }
 
+// initializeSchedules configures scan schedules for all ports
 func (s *Scheduler) initializeSchedules() {
-	// Critical ports - every 6h
-	criticalPorts := []int{22, 23, 3389, 5900, 5901}
-	for _, port := range criticalPorts {
+	// Define scan intervals per tier
+	intervals := map[PortTier]time.Duration{
+		TierCritical:   6 * time.Hour,       // Every 6h - remote access, high-risk
+		TierHigh:       24 * time.Hour,      // Every 24h - web, email, databases
+		TierICS:        24 * time.Hour,      // Every 24h - ICS/SCADA
+		TierTop1000:    7 * 24 * time.Hour,  // Every 7 days - Nmap top-1000
+		TierShodanFull: 30 * 24 * time.Hour, // Every 30 days - Full Shodan list
+	}
+
+	// Schedule all ports from registry
+	for _, port := range s.registry.GetAllPorts() {
+		def, _ := s.registry.GetPortInfo(port)
+		interval := intervals[def.Tier]
+
 		s.schedules[port] = &PortSchedule{
 			Port:         port,
-			Priority:     PriorityCritical,
-			ScanInterval: 6 * time.Hour,
-			NextScan:     time.Now(),
+			Tier:         def.Tier,
+			ScanInterval: interval,
+			NextScan:     time.Now(), // All ports due immediately on first run
 		}
 	}
 
-	// High priority - every 24h
-	highPorts := []int{80, 443, 8080, 8443, 8000, 8888}
-	for _, port := range highPorts {
-		s.schedules[port] = &PortSchedule{
-			Port:         port,
-			Priority:     PriorityHigh,
-			ScanInterval: 24 * time.Hour,
-			NextScan:     time.Now(),
-		}
-	}
-
-	// ICS/SCADA - every 24h
-	icsPorts := []int{102, 502, 1089, 1911, 2222, 4000, 4840, 20000, 44818, 47808, 55000}
-	for _, port := range icsPorts {
-		s.schedules[port] = &PortSchedule{
-			Port:         port,
-			Priority:     PriorityICS,
-			ScanInterval: 24 * time.Hour,
-			NextScan:     time.Now(),
-		}
-	}
-
-	// Top 1000 - every 7 days
-	// (In production, load from nmap top-1000 ports list)
-	top1000Ports := []int{21, 25, 110, 143, 445, 3306, 5432, 6379, 27017}
-	for _, port := range top1000Ports {
-		s.schedules[port] = &PortSchedule{
-			Port:         port,
-			Priority:     PriorityTop1000,
-			ScanInterval: 7 * 24 * time.Hour,
-			NextScan:     time.Now(),
-		}
-	}
+	log.Printf("Initialized scheduler with %d ports from Shodan list", len(s.schedules))
+	stats := s.registry.GetTierStats()
+	log.Printf("Port distribution - Critical: %d, High: %d, ICS: %d, Top1000: %d, Shodan: %d",
+		stats["critical"], stats["high"], stats["ics"], stats["top1000"], stats["shodan_full"])
 }
 
 // GetDuePorts returns ports that need scanning now
@@ -98,13 +81,32 @@ func (s *Scheduler) GetDuePorts(ctx context.Context) []int {
 	return duePorts
 }
 
+// GetDuePortsByTier returns ports due for scanning, grouped by tier
+// Useful for prioritizing critical ports in scan execution
+func (s *Scheduler) GetDuePortsByTier(ctx context.Context) map[PortTier][]int {
+	now := time.Now()
+	byTier := make(map[PortTier][]int)
+
+	for port, schedule := range s.schedules {
+		if now.After(schedule.NextScan) || now.Equal(schedule.NextScan) {
+			byTier[schedule.Tier] = append(byTier[schedule.Tier], port)
+		}
+	}
+
+	return byTier
+}
+
 // MarkScanned updates the schedule after a port is scanned
 func (s *Scheduler) MarkScanned(port int) {
 	if schedule, exists := s.schedules[port]; exists {
 		now := time.Now()
 		schedule.LastScanned = now
 		schedule.NextScan = now.Add(schedule.ScanInterval)
-		log.Printf("Port %d marked scanned. Next scan: %s", port, schedule.NextScan.Format(time.RFC3339))
+
+		// Only log critical/high ports to reduce noise
+		if schedule.Tier <= TierHigh {
+			log.Printf("Port %d marked scanned. Next scan: %s", port, schedule.NextScan.Format(time.RFC3339))
+		}
 	}
 }
 
@@ -124,32 +126,24 @@ func (s *Scheduler) GetNextScanTime() time.Time {
 	return nextScan
 }
 
-// GetScheduleSummary returns a summary of all port schedules
+// GetScheduleSummary returns a detailed summary of port schedules
 func (s *Scheduler) GetScheduleSummary() map[string]interface{} {
-	criticalCount := 0
-	highCount := 0
-	icsCount := 0
-	top1000Count := 0
-
-	for _, schedule := range s.schedules {
-		switch schedule.Priority {
-		case PriorityCritical:
-			criticalCount++
-		case PriorityHigh:
-			highCount++
-		case PriorityICS:
-			icsCount++
-		case PriorityTop1000:
-			top1000Count++
-		}
-	}
+	stats := s.registry.GetTierStats()
 
 	return map[string]interface{}{
-		"total_ports":      len(s.schedules),
-		"critical_ports":   criticalCount,
-		"high_ports":       highCount,
-		"ics_ports":        icsCount,
-		"top1000_ports":    top1000Count,
-		"next_scan":        s.GetNextScanTime().Format(time.RFC3339),
+		"total_ports":       len(s.schedules),
+		"critical_ports":    stats["critical"],
+		"high_ports":        stats["high"],
+		"ics_ports":         stats["ics"],
+		"top1000_ports":     stats["top1000"],
+		"shodan_full_ports": stats["shodan_full"],
+		"next_scan":         s.GetNextScanTime().Format(time.RFC3339),
+		"source":            "Shodan official port list (3,846 ports)",
 	}
+}
+
+// GetPortRegistry returns the underlying port registry
+// Useful for accessing port metadata
+func (s *Scheduler) GetPortRegistry() *PortRegistry {
+	return s.registry
 }
