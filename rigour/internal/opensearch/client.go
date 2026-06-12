@@ -9,7 +9,8 @@ import (
 )
 
 type Client struct {
-	os *opensearchgo.Client
+	os      *opensearchgo.Client
+	baseURL string
 }
 
 func NewClient(addresses []string) (*Client, error) {
@@ -39,9 +40,22 @@ func NewClient(addresses []string) (*Client, error) {
 		return nil, fmt.Errorf("OpenSearch returned error: %s", res.Status())
 	}
 
-	return &Client{os: client}, nil
+	baseURL := ""
+	if len(addresses) > 0 {
+		baseURL = addresses[0]
+	}
+
+	return &Client{os: client, baseURL: baseURL}, nil
 }
 
 func (c *Client) Raw() *opensearchgo.Client {
 	return c.os
+}
+
+func (c *Client) BaseURL() string {
+	return c.baseURL
+}
+
+func (c *Client) Perform(req *http.Request) (*http.Response, error) {
+	return c.os.Perform(req)
 }
