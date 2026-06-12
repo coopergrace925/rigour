@@ -1,83 +1,110 @@
-# AGENTS.md
+---
 
-High-signal guidance for working with the Rigour codebase.
+## NATS Streams & Subjects
 
-## Project Structure
+**Streams (JetStream):**
+- `RAW_SCANS` - Raw ZMap+ZGrab2 output, 48h retention, WorkQueue
+- `ENRICHED_SCANS` - GeoIP/rDNS/CPE/CVE enriched, 24h retention, WorkQueue
+- `SCAN_EVENTS` - Audit/alert events, 7d retention, Limits
+- `SCAN_TASKS` - Coordinator → scanner-agent task queue, 24h retention
 
-Rigour is migrating from an MVP stack (Kafka + MongoDB + Naabu/Fingerprintx) to a Censys-competitor architecture (NATS JetStream + OpenSearch + Redis + ZMap/ZGrab2).
+**Subject patterns:**
+- `scan.raw.<port>` - Raw scans per port (e.g., `scan.raw.443`)
+- `scan.enriched.<port>` - Enriched scans per port
+- `scan.task.<port>` - Scan tasks per port
+- `scan.event.*` - Audit/alert events
 
-### Go Services & Layout (`rigour/` Go monorepo, Go 1.25.0)
-
-**New Pipeline Services (Phase 1):**
-- `cmd/zsend/` - CLI tool to stream ZMap (CSV) / ZGrab2 (NDJSON) output to NATS `scan.raw.<port>`
-- `cmd/enrichment-worker/` - Queue consumer (`enrichment-workers`) that enriches scans with GeoIP/ASN and publishes to `scan.enriched.<port>`
-- `cmd/opensearch-indexer/` - Queue consumer (`opensearch-indexer`) that indexes/upserts hosts into OpenSearch
-
-**Shared Logic (`internal/`):**
-- `internal/blocklist/` - Thread-safe RFC1918, DoD, and IANA reserved IP blocklist and opt-out manager
-- `internal/enrichment/` - GeoIP lookup (MaxMind GeoLite2) and Pseudo-service / Honeypot detection
-- `internal/opensearch/` - OpenSearch client, Hosts index creator, and Censys-style 7-day port staleness pruner / merge utility
-- `internal/nats/` - NATS JetStream client and idempotent stream configuration (`RAW_SCANS`, `ENRICHED_SCANS`, `SCAN_EVENTS`)
-
-**MVP Legacy Services:**
-- `cmd/crawler/` - Network scanner (Naabu + Fingerprintx)
-- `cmd/persistence/` - Kafka consumer, enriches and stores to MongoDB
-- `cmd/api/` - REST API server (Chi router querying MongoDB)
-
-**Frontend:**
-- `rigour-ui/` - Next.js UI for viewing scan results
+**Queue groups:**
+- `enrichment-workers` - Enrichment worker consumers
+- `opensearch-indexer` - Indexer consumers
+- `scanner-agents` - Scanner agent consumers
 
 ---
 
-## Infrastructure Stack
+## OpenSearch Schema
 
-- **New Stack (NATS JetStream + OpenSearch + Redis)**: Managed via `docker-compose.new.yml`
-- **Legacy Stack (Kafka + ZooKeeper + MongoDB + GeoIPUpdate)**: Managed via `docker-compose.yml` and `docker-compose.override.yml`
+**Index:** `hosts`
 
----
-
-## Development & Test Commands
-
-Run Go commands from the `rigour/` directory.
-
-### Build New Pipeline Services
-```bash
-go build ./cmd/zsend/
-go build ./cmd/enrichment-worker/
-go build ./cmd/opensearch-indexer/
+**Key mappings:**
+```json
+{
+  "ip": { "type": "ip" },
+  "ports": { 
+    "type": "nested",  // CRITICAL - prevents cross-port contamination
+    "properties": {
+      "port": { "type": "integer" },
+      "protocol": { "type": "keyword" },
+      "service": { "type": "keyword" },
+      "banner": { "type": "text" },
+      "last_seen": { "type": "date" }
+    }
+  },
+  "asn": { "type": "integer" },
+  "country": { "type": "keyword" },
+  "cves": {
+    "type": "nested",
+    "properties": {
+      "id": { "type": "keyword" },
+      "verified": { "type": "boolean" }
+    }
+  }
+}
 ```
 
-### Run Pipeline Unit Tests (Fast & Self-Contained)
-Unit tests for the new architecture do not require NATS, OpenSearch, or Docker to be running:
-```bash
-go test -v ./cmd/zsend ./internal/blocklist ./internal/enrichment ./internal/opensearch
-```
-
-### Run Entire Test Suite (Requires Host libpcap-dev and Docker daemon)
-Legacy crawler tests use `dockertest` and will fail if Docker is not running.
-```bash
-# Setup dependency
-sudo apt-get update && sudo apt-get install -y libpcap-dev
-# Run tests
-go test -v -race ./...
-```
+**ILM Policy:** hot (1d/30GB) → warm (30d) → delete
 
 ---
 
-## Crucial Architectural Constraints
+## API Query Syntax (Shodan-Compatible)
 
-1. **NO MongoDB in New Stack**: OpenSearch is the single source of truth for host and port state.
-2. **Nested Mapping**: OpenSearch `ports` schema must be `"type": "nested"` to prevent cross-port query contamination.
-3. **OpenSearch Upsert**: Index documents using the host IP address as the document ID.
-4. **Idempotency**: NATS stream creation (`SetupStreams`) and OpenSearch index creation (`CreateHostsIndex`) check for existing resources first to prevent errors on restart.
-5. **Staleness Pruning**: `MergePorts` implements a 7-day TTL cutoff to prune ports not scanned recently.
-6. **Go 1.25.0**: Monorepo uses Go 1.25.0 due to NATS dependencies.
+**Shodan dork parser** in `internal/api/parser.go`:
+
+```
+port:22                    # Port filter
+country:US                 # Country code
+asn:AS15169               # ASN filter
+org:"Google LLC"          # Organization
+cve:CVE-2023-12345        # CVE filter
+verified:true             # Verified CVEs only
+banner:"OpenSSH"          # Banner text search
+title:"Welcome"           # HTTP title
+server:nginx              # HTTP server header
+product:apache            # Product name
+```
+
+**API endpoint:** `GET /api/hosts/search?q=<query>&limit=<N>`
 
 ---
 
-## Environment & Run Gotchas
+## Breaking Changes (2026-06-12)
 
-- **MaxMind Databases**: The enrichment worker requires GeoLite2-City and GeoLite2-ASN databases to start up. If running locally without Docker volume `geoipupdate_data`, provide paths using `--geoip-city` and `--geoip-asn`.
-- **IP Validation**: `zsend` validates that incoming IPs are well-formed IPv4 addresses to prevent stream pollution.
-- **Port Extraction**: ZGrab2 inputs parsed by `zsend` must have their port extracted and populated, otherwise routing to `scan.raw.<port>` fails.
-- **Nil IP Checks**: Ensure blocklist and GeoIP lookups handle `nil` IP inputs gracefully to avoid panics.
+Recent world-class implementation introduced breaking changes:
+
+1. **Port coverage:** Changed from "all 65,535 ports" to "3,847 Shodan ports"
+2. **CVE type:** `[]string` → `[]CVEInfo` (with verified flag)
+3. **RawScan fields:** Added `BannerID`, `ParentID`, `ScannerRegion`
+4. **CertInfo fields:** Added `Hostnames` array for easy querying
+
+**If working with old code:** Check git history around commit `2949dbc` (2026-06-12).
+
+---
+
+## Common Mistakes to Avoid
+
+1. **Don't add MongoDB** - OpenSearch is the single database
+2. **Don't use `[]string` for CVEs** - Use `[]CVEInfo` with verified flag
+3. **Don't hardcode port lists** - Use port registry from `internal/coordinator/ports.go`
+4. **Don't scan all 65,535 ports** - Use Shodan's 3,847 port list
+5. **Don't forget nested type** - OpenSearch ports MUST be `"type": "nested"`
+6. **Don't skip banner IDs** - All scans need `BannerID` for deduplication
+7. **Don't disable SNI/Host headers** - Required for cloud/CDN detection
+
+---
+
+## Reference Documents
+
+- **Design Spec:** `docs/superpowers/specs/2026-06-11-rigour-censys-competitor-design.md`
+- **Implementation Summary:** `docs/superpowers/analysis/2026-06-12-world-class-implementation-summary.md`
+- **Phase Plans:** `docs/superpowers/plans/2026-06-11-phase*.md`
+
+**For architecture questions:** Read the design spec first. For implementation status: Read the world-class summary.
