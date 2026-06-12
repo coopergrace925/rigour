@@ -52,31 +52,44 @@ export function SearchHeader({ initialQuery = '' }: SearchHeaderProps) {
 
   return (
     <header className="space-y-6">
-      <div className="flex items-center justify-between border-b border-border pb-6">
-        <h1 className="tracking-tighter text-foreground" style={{ fontFamily: 'Space Grotesk, monospace', fontSize: '3rem', fontWeight: 700, letterSpacing: '-0.05em' }}>
-          RIGOUR
-        </h1>
-        <a
-          href="https://github.com/ctrlsam/rigour"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <Github className="h-6 w-6" />
-        </a>
+      <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-border pb-6 gap-4">
+        <div>
+          <h1 className="tracking-tighter text-foreground glow-text text-5xl font-extrabold font-mono">
+            RIGOUR_
+          </h1>
+          <p className="text-xs text-muted-foreground uppercase tracking-widest mt-1">
+            // TELEMETRY RECONNAISSANCE SYSTEM
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 text-[10px] font-mono border border-border p-2 bg-black/40">
+          <div className="flex items-center gap-1.5 px-2 py-0.5 border-r border-border">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="text-muted-foreground">SYS_STATUS:</span>
+            <span className="text-emerald-500 font-bold">ACTIVE</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2 py-0.5 border-r border-border">
+            <span className="text-muted-foreground">ZMAP_SWEEP:</span>
+            <span className="text-foreground">10.4M PPS</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2 py-0.5 border-r border-border">
+            <span className="text-muted-foreground">BLOCKLIST:</span>
+            <span className="text-foreground">RFC1918 + OPT-OUT</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2 py-0.5">
+            <span className="text-muted-foreground">PORT_COVERAGE:</span>
+            <span className="text-foreground">65,535 (FULL)</span>
+          </div>
+        </div>
       </div>
 
       <div className="space-y-2">
-        <p className="text-muted-foreground uppercase tracking-wider text-sm">
-          Internet-Connected Device Intelligence Platform
-        </p>
         <p className="text-xs text-muted-foreground">
-          Query using field syntax: <code className="bg-secondary px-1 rounded">field: value</code> (e.g., <code className="bg-secondary px-1 rounded">services.protocol: ssh</code>)
+          Enter search filters using field syntax (e.g., <code className="bg-secondary px-1 py-0.5 border border-border rounded text-foreground font-mono">services.protocol: ssh</code> or <code className="bg-secondary px-1 py-0.5 border border-border rounded text-foreground font-mono">location.country_code: US</code>)
         </p>
       </div>
 
       <div className="flex gap-2">
-        <div className="relative flex-1">
+        <div className="relative flex-1 scan-sweep border border-border">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
           <Input
             type="text"
@@ -84,14 +97,14 @@ export function SearchHeader({ initialQuery = '' }: SearchHeaderProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyPress={handleKeyPress}
-            className="pl-12 h-14 bg-secondary border-border text-white"
+            className="pl-12 h-14 bg-black/60 border-0 text-white font-mono placeholder:text-muted-foreground/60 focus:ring-0 focus:outline-none"
           />
         </div>
         <Button
           onClick={handleSearch}
-          className="h-14 px-6 bg-primary hover:bg-primary/90"
+          className="h-14 px-8 bg-primary hover:bg-primary/80 font-mono text-black font-bold uppercase tracking-wider"
         >
-          Search
+          EXECUTE_SEARCH
         </Button>
       </div>
     </header>

@@ -5,6 +5,9 @@ export interface Service {
   tls: boolean;
   transport: string;
   last_scan: string;
+  cpe?: string;
+  product?: string;
+  banner?: string;
   https?: {
     status: string;
     statusCode: number;
@@ -24,6 +27,8 @@ export interface Host {
   id: string;
   ip: string;
   ip_int: number;
+  rdns?: string;
+  cves?: string[];
   asn: {
     number: number;
     organization: string;
@@ -40,4 +45,3 @@ export interface Host {
   last_seen: string;
   services: Service[];
 }
-

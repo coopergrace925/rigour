@@ -42,40 +42,40 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.85 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.4 0 0);
-  --input: oklch(0.25 0 0);
-  --ring: oklch(0.6 0 0);
+  --background: #080605;
+  --foreground: #f59e0b;
+  --card: #120e0b;
+  --card-foreground: #f59e0b;
+  --popover: #120e0b;
+  --popover-foreground: #f59e0b;
+  --primary: #f59e0b;
+  --primary-foreground: #080605;
+  --secondary: #1c140d;
+  --secondary-foreground: #fbbf24;
+  --muted: #14100d;
+  --muted-foreground: #78350f;
+  --accent: #24180d;
+  --accent-foreground: #fbbf24;
+  --destructive: #b91c1c;
+  --destructive-foreground: #fee2e2;
+  --border: #2e1a0c;
+  --input: #120e0b;
+  --ring: #d97706;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+  --chart-1: #d97706;
+  --chart-2: #ea580c;
+  --chart-3: #f59e0b;
+  --chart-4: #b45309;
+  --chart-5: #78350f;
+  --sidebar: #0e0b09;
+  --sidebar-foreground: #f59e0b;
+  --sidebar-primary: #f59e0b;
+  --sidebar-primary-foreground: #080605;
+  --sidebar-accent: #1c140d;
+  --sidebar-accent-foreground: #fbbf24;
+  --sidebar-border: #2e1a0c;
+  --sidebar-ring: #d97706;
 }
 
 @theme inline {
@@ -125,7 +125,7 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-mono;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -183,3 +183,48 @@
 html {
   font-size: var(--font-size);
 }
+
+/* Custom CRT / Telemetry / Signal aesthetic styles */
+.glow-text {
+  text-shadow: 0 0 3px rgba(245, 158, 11, 0.4), 0 0 10px rgba(245, 158, 11, 0.15);
+}
+
+.glow-text-red {
+  text-shadow: 0 0 3px rgba(239, 68, 68, 0.4), 0 0 10px rgba(239, 68, 68, 0.15);
+}
+
+.glow-border {
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.15);
+}
+
+.crt-lines {
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%,
+    rgba(0, 0, 0, 0.15) 50%
+  );
+  background-size: 100% 4px;
+}
+
+@keyframes sweep {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+.scan-sweep {
+  position: relative;
+  overflow: hidden;
+}
+
+.scan-sweep::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: rgba(245, 158, 11, 0.2);
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+  animation: sweep 8s linear infinite;
+  pointer-events: none;
+}
+
