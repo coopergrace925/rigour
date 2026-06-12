@@ -17,6 +17,11 @@ type Router struct {
 
 // NewRouter creates a new API router.
 func NewRouter(repository storage.HostRepository, redisClient *redis.Client) *Router {
+	return NewRouterWithAnalytics(repository, redisClient, nil)
+}
+
+// NewRouterWithAnalytics creates a new API router with analytics support.
+func NewRouterWithAnalytics(repository storage.HostRepository, redisClient *redis.Client, analytics *AnalyticsHandler) *Router {
 	r := chi.NewRouter()
 
 	// Add CORS middleware
@@ -53,6 +58,16 @@ func NewRouter(repository storage.HostRepository, redisClient *redis.Client) *Ro
 			r.Get("/streams", dashboard.GetStreamHealth)
 			r.Get("/metrics", dashboard.GetSystemMetrics)
 		})
+		
+		// Analytics routes
+		if analytics != nil {
+			r.Route("/analytics", func(r chi.Router) {
+				r.Get("/overview", analytics.GetOverview)
+				r.Get("/services", analytics.GetServiceAnalytics)
+				r.Get("/cves", analytics.GetCVEAnalytics)
+				r.Get("/asns", analytics.GetASNAnalytics)
+			})
+		}
 	})
 
 	return &Router{

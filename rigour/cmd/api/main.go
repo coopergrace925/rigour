@@ -66,8 +66,12 @@ func runServer(ctx context.Context) error {
 	// Create rate limiter
 	rateLimiter := api.NewRateLimiter(redisClient)
 
+	// Create analytics handler (ClickHouse client would be passed here)
+	var analyticsHandler *api.AnalyticsHandler
+	// analyticsHandler = api.NewAnalyticsHandler(clickhouseClient)
+
 	// Create router and handler with middleware
-	router := api.NewRouter(repository, redisClient)
+	router := api.NewRouterWithAnalytics(repository, redisClient, analyticsHandler)
 	
 	// Apply middleware to the handler
 	var handler http.Handler = router.Handler()
