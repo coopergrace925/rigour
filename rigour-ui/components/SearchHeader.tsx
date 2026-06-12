@@ -1,10 +1,11 @@
 'use client';
 
-import { Search, Github } from 'lucide-react';
+import { Search, Activity } from 'lucide-react';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import Link from 'next/link';
 
 interface SearchHeaderProps {
   initialQuery?: string;
@@ -55,24 +56,32 @@ export function SearchHeader({ initialQuery = '' }: SearchHeaderProps) {
             // TELEMETRY RECONNAISSANCE SYSTEM
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 text-[10px] font-mono border border-border p-2 bg-black/40">
-          <div className="flex items-center gap-1.5 px-2 py-0.5 border-r border-border">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-muted-foreground">SYS_STATUS:</span>
-            <span className="text-emerald-500 font-bold">ACTIVE</span>
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap gap-2 text-[10px] font-mono border border-border p-2 bg-black/40">
+            <div className="flex items-center gap-1.5 px-2 py-0.5 border-r border-border">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="text-muted-foreground">SYS_STATUS:</span>
+              <span className="text-emerald-500 font-bold">ACTIVE</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 border-r border-border">
+              <span className="text-muted-foreground">ZMAP_SWEEP:</span>
+              <span className="text-foreground">10.4M PPS</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 border-r border-border">
+              <span className="text-muted-foreground">BLOCKLIST:</span>
+              <span className="text-foreground">RFC1918 + OPT-OUT</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-2 py-0.5">
+              <span className="text-muted-foreground">PORT_COVERAGE:</span>
+              <span className="text-foreground">65,535 (FULL)</span>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5 px-2 py-0.5 border-r border-border">
-            <span className="text-muted-foreground">ZMAP_SWEEP:</span>
-            <span className="text-foreground">10.4M PPS</span>
-          </div>
-          <div className="flex items-center gap-1.5 px-2 py-0.5 border-r border-border">
-            <span className="text-muted-foreground">BLOCKLIST:</span>
-            <span className="text-foreground">RFC1918 + OPT-OUT</span>
-          </div>
-          <div className="flex items-center gap-1.5 px-2 py-0.5">
-            <span className="text-muted-foreground">PORT_COVERAGE:</span>
-            <span className="text-foreground">65,535 (FULL)</span>
-          </div>
+          <Link href="/health">
+            <Button size="sm" variant="outline" className="w-full gap-2 rounded-none border-border hover:border-primary text-foreground uppercase tracking-widest text-[10px]">
+              <Activity className="h-3 w-3" />
+              SYSTEM_HEALTH_DASHBOARD
+            </Button>
+          </Link>
         </div>
       </div>
 
