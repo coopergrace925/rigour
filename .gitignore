@@ -24,8 +24,10 @@ go.work
 .vscode
 .idea
 
-# rigour binary
+# rigour binaries
 rigour/rigour
+rigour/api
+rigour/coordinator
 
 # env
 .env
